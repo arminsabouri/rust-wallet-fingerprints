@@ -6,9 +6,7 @@ mod util;
 use bitcoin::secp256k1::ecdsa::Signature;
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::transaction::Version;
-use bitcoin::{
-    Address, AddressType, Amount, Network, OutPoint, Sequence, Transaction, TxOut
-};
+use bitcoin::{Address, AddressType, Amount, Network, OutPoint, Sequence, Transaction, TxOut};
 use std::collections::HashSet;
 use util::extract_all_signatures;
 
@@ -111,55 +109,56 @@ struct InputWithAmount {
     outpoint: OutPoint,
 }
 
-// TODO
-// pub fn get_input_order(tx: &Transaction, prev_outs: &[TxOut]) -> Vec<InputSortingType> {
-//     if tx.input.len() == 1 {
-//         return vec![InputSortingType::Single];
-//     }
+/// Returns the input sorting types detected in the transaction
+pub fn get_input_order(tx: &Transaction, prev_outs: &[TxOut]) -> Vec<InputSortingType> {
+    if tx.input.len() == 1 {
+        return vec![InputSortingType::Single];
+    }
 
-//     let mut sorting_types = Vec::new();
-//     let mut amounts = Vec::new();
+    let mut sorting_types = Vec::new();
+    let mut amounts = Vec::new();
 
-//     // Collect amounts and prevouts
-//     for input in &tx.input {
-//         let prevout = prev_outs[input.previous_output.vout as usize];
-//         amounts.push(InputWithAmount {
-//             amount: prevout.value,
-//             outpoint: input.previous_output,
-//         });
-//     }
+    // Collect amounts and prevouts
+    for input in &tx.input {
+        let prevout = prev_outs[input.previous_output.vout as usize].clone();
+        amounts.push(InputWithAmount {
+            amount: prevout.value,
+            outpoint: input.previous_output,
+        });
+    }
 
-//     // Check if amounts are sorted (if we had amounts)
-//     if !amounts.is_empty() {
-//         let mut sorted_amounts = amounts.clone();
-//         sorted_amounts.sort_by_key(|a| a.amount);
-//         if amounts == sorted_amounts {
-//             sorting_types.push(InputSortingType::Ascending);
-//         }
+    // Check if amounts are sorted (if we had amounts)
+    if !amounts.is_empty() {
+        let mut sorted_amounts = amounts.clone();
+        sorted_amounts.sort_by_key(|a| a.amount);
+        if amounts == sorted_amounts {
+            sorting_types.push(InputSortingType::Ascending);
+        }
 
-//         sorted_amounts.reverse();
-//         if amounts == sorted_amounts {
-//             sorting_types.push(InputSortingType::Descending);
-//         }
-//     }
+        sorted_amounts.reverse();
+        if amounts == sorted_amounts {
+            sorting_types.push(InputSortingType::Descending);
+        }
+    }
 
-//     // Check BIP69 sorting
-//     let mut sorted_prevouts = prevouts.clone();
-//     sorted_prevouts.sort();
-//     if prevouts == sorted_prevouts {
-//         sorting_types.push(InputSortingType::Bip69);
-//     }
+    // Check BIP69 sorting
+    let mut sorted_prevouts = prev_outs.to_vec();
+    sorted_prevouts.sort();
+    if prev_outs == sorted_prevouts {
+        sorting_types.push(InputSortingType::Bip69);
+    }
 
-//     // Note: Historical sorting would require access to confirmation height data
-//     // which isn't available in the Transaction struct alone
+    // Note: Historical sorting would require access to confirmation height data
+    // which isn't available in the Transaction struct alone
+    if sorting_types.is_empty() {
+        sorting_types.push(InputSortingType::Unknown);
+    }
 
-//     if sorting_types.is_empty() {
-//         sorting_types.push(InputSortingType::Unknown);
-//     }
+    sorting_types
+}
 
-//     sorting_types
-// }
-
+/// Returns true if the transaction has low-order R-grinding signatures
+/// https://bitcoinops.org/en/topics/low-r-grinding
 pub fn low_order_r_grinding(tx: &Transaction) -> bool {
     let sigs = extract_all_signatures(tx);
     for sig_bytes in sigs.iter() {
@@ -355,9 +354,7 @@ pub fn get_output_structure(tx: &Transaction) -> Vec<OutputStructureType> {
 /// Returns true if the transaction signals RBF (Replace-By-Fee)
 /// by having at least one input with sequence number less than 0xffffffff
 pub fn signals_rbf(tx: &Transaction) -> bool {
-    tx.input
-        .iter()
-        .any(|input| input.sequence < Sequence::MAX)
+    tx.input.iter().any(|input| input.sequence < Sequence::MAX)
 }
 
 /// Returns true if any output address matches any input address, indicating address reuse
