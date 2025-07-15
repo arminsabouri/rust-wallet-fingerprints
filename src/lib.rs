@@ -7,7 +7,7 @@ use bitcoin::secp256k1::ecdsa::Signature;
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::transaction::Version;
 use bitcoin::{
-    Address, AddressType, Amount, CompressedPublicKey, Network, OutPoint, Transaction, TxOut,
+    Address, AddressType, Amount, Network, OutPoint, Sequence, Transaction, TxOut
 };
 use std::collections::HashSet;
 use util::extract_all_signatures;
@@ -357,7 +357,7 @@ pub fn get_output_structure(tx: &Transaction) -> Vec<OutputStructureType> {
 pub fn signals_rbf(tx: &Transaction) -> bool {
     tx.input
         .iter()
-        .any(|input| input.sequence.to_consensus_u32() < 0xffffffff)
+        .any(|input| input.sequence < Sequence::MAX)
 }
 
 /// Returns true if any output address matches any input address, indicating address reuse
