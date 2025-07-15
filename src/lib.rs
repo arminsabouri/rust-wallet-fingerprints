@@ -172,18 +172,39 @@ pub fn low_order_r_grinding(tx: &Transaction) -> bool {
     false
 }
 
-/// Returns true if the transaction has mixed input types
-pub fn mixed_input_types(tx: &Transaction, prev_outs: &[TxOut]) -> bool {
-    let mut input_types = HashSet::new();
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum InputType {
+    Opreturn,
+    Nulldata,
+    Address(AddressType),
+}
+
+/// Get input types
+pub fn get_input_types(tx: &Transaction, prev_outs: &[TxOut]) -> Vec<InputType> {
+    let mut input_types = Vec::new();
     for input in tx.input.iter() {
         let prevout = prev_outs[input.previous_output.vout as usize].clone();
         if let Ok(address) = Address::from_script(&prevout.script_pubkey, Network::Bitcoin) {
             if let Some(address_type) = address.address_type() {
-                input_types.insert(address_type);
+                input_types.push(InputType::Address(address_type));
+            }
+        } else {
+            if prevout.script_pubkey.is_op_return() {
+                input_types.push(InputType::Opreturn);
+            } else {
+                input_types.push(InputType::Nulldata);
             }
         }
     }
 
+    input_types
+}
+
+/// Returns true if the transaction has mixed input types
+pub fn mixed_input_types(tx: &Transaction, prev_outs: &[TxOut]) -> bool {
+    let input_types = get_input_types(tx, prev_outs)
+        .into_iter()
+        .collect::<HashSet<InputType>>();
     input_types.len() > 1
 }
 
@@ -370,7 +391,11 @@ pub fn address_reuse(tx: &Transaction, prev_outs: &[TxOut]) -> bool {
     !input_scripts.is_disjoint(&output_scripts)
 }
 
-pub fn detect_wallet(tx: &Transaction) -> (HashSet<WalletType>, Vec<String>) {
+/// Main wallet detection function (full implementation)
+pub fn detect_wallet(
+    tx: &Transaction,
+    prev_txs: &[Transaction],
+) -> (HashSet<WalletType>, Vec<String>) {
     let mut possible_wallets = HashSet::from([
         WalletType::BitcoinCore,
         WalletType::Electrum,
@@ -383,21 +408,30 @@ pub fn detect_wallet(tx: &Transaction) -> (HashSet<WalletType>, Vec<String>) {
     ]);
     let mut reasoning = Vec::new();
 
-    // Check anti-fee sniping
-    match is_anti_fee_sniping(tx) {
-        true => {
-            reasoning.push("Anti-fee-sniping".to_string());
-            possible_wallets
-                .retain(|w| matches!(w, WalletType::BitcoinCore | WalletType::Electrum));
-        }
-        false => {
-            reasoning.push("No Anti-fee-sniping".to_string());
-            possible_wallets.remove(&WalletType::BitcoinCore);
-            possible_wallets.remove(&WalletType::Electrum);
-        }
+    // Anti-fee-sniping
+    if is_anti_fee_sniping(tx) {
+        reasoning.push("Anti-fee-sniping".to_string());
+        possible_wallets.retain(|w| *w == WalletType::BitcoinCore || *w == WalletType::Electrum);
+    } else {
+        reasoning.push("No Anti-fee-sniping".to_string());
+        possible_wallets.remove(&WalletType::BitcoinCore);
+        possible_wallets.remove(&WalletType::Electrum);
     }
 
-    // Check transaction version
+    // Uncompressed public keys
+    let prev_txouts = prev_txs
+        .iter()
+        .map(|tx| tx.output.clone())
+        .flatten()
+        .collect::<Vec<_>>();
+    if !using_uncompressed_pubkeys(tx, &prev_txs) {
+        reasoning.push("Uncompressed public key(s)".to_string());
+        possible_wallets.clear();
+    } else {
+        reasoning.push("All compressed public keys".to_string());
+    }
+
+    // Transaction version
     match tx.version {
         Version::ONE => {
             reasoning.push("nVersion = 1".to_string());
@@ -419,9 +453,176 @@ pub fn detect_wallet(tx: &Transaction) -> (HashSet<WalletType>, Vec<String>) {
         }
     }
 
-    if possible_wallets.is_empty() {
-        (HashSet::from([WalletType::Other]), reasoning)
+    // Low-r signatures
+    if !low_order_r_grinding(tx) {
+        reasoning.push("Not low-r-grinding".to_string());
+        possible_wallets.remove(&WalletType::BitcoinCore);
+        possible_wallets.remove(&WalletType::Electrum);
     } else {
-        (possible_wallets, reasoning)
+        reasoning.push("Low r signatures only".to_string());
     }
+
+    // RBF
+    if signals_rbf(tx) {
+        reasoning.push("signals RBF".to_string());
+        possible_wallets.remove(&WalletType::Coinbase);
+        possible_wallets.remove(&WalletType::Exodus);
+    } else {
+        reasoning.push("does not signal RBF".to_string());
+        possible_wallets.remove(&WalletType::BitcoinCore);
+        possible_wallets.remove(&WalletType::Electrum);
+        possible_wallets.remove(&WalletType::BlueWallet);
+        possible_wallets.remove(&WalletType::Ledger);
+        possible_wallets.remove(&WalletType::Trezor);
+        possible_wallets.remove(&WalletType::Trust);
+    }
+
+    // Sending types
+    let sending_types = get_input_types(tx, &prev_txouts);
+    if sending_types
+        .iter()
+        // Should differenciate between P2tr key and script spend
+        .any(|t| *t == InputType::Address(AddressType::P2tr))
+    {
+        reasoning.push("Sends to taproot address".to_string());
+        possible_wallets.remove(&WalletType::Coinbase);
+    }
+    if sending_types
+        .iter()
+        .any(|t| *t == InputType::Opreturn || *t == InputType::Nulldata)
+    {
+        reasoning.push("Creates OP_RETURN output".to_string());
+        possible_wallets.remove(&WalletType::Coinbase);
+        possible_wallets.remove(&WalletType::Exodus);
+        possible_wallets.remove(&WalletType::BlueWallet);
+        possible_wallets.remove(&WalletType::Ledger);
+        possible_wallets.remove(&WalletType::Trust);
+    }
+
+    // Spending types
+    let spending_types = get_spending_types(tx, prev_outs);
+    if spending_types
+        .iter()
+        .any(|t| t == "witness_v1_taproot" || t == "v1_p2tr")
+    {
+        reasoning.push("Spends taproot output".to_string());
+        possible_wallets.remove(&WalletType::Coinbase);
+        possible_wallets.remove(&WalletType::Exodus);
+        possible_wallets.remove(&WalletType::Electrum);
+        possible_wallets.remove(&WalletType::BlueWallet);
+        possible_wallets.remove(&WalletType::Ledger);
+        possible_wallets.remove(&WalletType::Trust);
+    }
+    if spending_types
+        .iter()
+        .any(|t| t == "witness_v0_scripthash" || t == "v0_p2wsh")
+    {
+        possible_wallets.remove(&WalletType::Coinbase);
+        possible_wallets.remove(&WalletType::Exodus);
+        possible_wallets.remove(&WalletType::Trust);
+        possible_wallets.remove(&WalletType::Trezor);
+    }
+    if spending_types
+        .iter()
+        .any(|t| t == "pubkeyhash" || t == "p2pkh")
+    {
+        reasoning.push("Spends P2PKH output".to_string());
+        possible_wallets.remove(&WalletType::Exodus);
+        possible_wallets.remove(&WalletType::Trust);
+    }
+
+    // Multi-type vin
+    if mixed_input_types(tx, &prev_txouts) {
+        reasoning.push("Has multi-type vin".to_string());
+        possible_wallets.remove(&WalletType::Exodus);
+        possible_wallets.remove(&WalletType::Electrum);
+        possible_wallets.remove(&WalletType::BlueWallet);
+        possible_wallets.remove(&WalletType::Ledger);
+        possible_wallets.remove(&WalletType::Trezor);
+        possible_wallets.remove(&WalletType::Trust);
+    }
+
+    // Change type matched inputs/outputs
+    let change_matched_inputs = change_type_matched_inputs(tx, &prev_txouts);
+    if change_matched_inputs == -1 {
+        reasoning.push("Change type matched outputs".to_string());
+        if possible_wallets.contains(&WalletType::BitcoinCore) {
+            possible_wallets = HashSet::from([WalletType::BitcoinCore]);
+        } else {
+            possible_wallets.clear();
+        }
+    } else if change_matched_inputs == 1 {
+        reasoning.push("Change type matched inputs".to_string());
+        possible_wallets.remove(&WalletType::BitcoinCore);
+    }
+
+    // Address reuse
+    if address_reuse(tx, &prev_txouts) {
+        reasoning.push("Address reuse between vin and vout".to_string());
+        possible_wallets.remove(&WalletType::Coinbase);
+        possible_wallets.remove(&WalletType::BitcoinCore);
+        possible_wallets.remove(&WalletType::Electrum);
+        possible_wallets.remove(&WalletType::BlueWallet);
+        possible_wallets.remove(&WalletType::Ledger);
+        possible_wallets.remove(&WalletType::Trezor);
+    } else {
+        reasoning.push("No address reuse between vin and vout".to_string());
+        possible_wallets.remove(&WalletType::Exodus);
+        possible_wallets.remove(&WalletType::Trust);
+    }
+
+    // Input/output structure
+    let input_order = get_input_order(tx, &prev_txouts);
+    let output_structure = get_output_structure(tx);
+
+    if output_structure.contains(&OutputStructureType::Multi) {
+        reasoning.push("More than 2 outputs".to_string());
+        possible_wallets.remove(&WalletType::Coinbase);
+        possible_wallets.remove(&WalletType::Exodus);
+        possible_wallets.remove(&WalletType::Ledger);
+        possible_wallets.remove(&WalletType::Trust);
+    }
+
+    if !output_structure.contains(&OutputStructureType::Bip69) {
+        reasoning.push("BIP-69 not followed by outputs".to_string());
+        possible_wallets.remove(&WalletType::Electrum);
+        possible_wallets.remove(&WalletType::Trezor);
+    } else {
+        reasoning.push("BIP-69 followed by outputs".to_string());
+    }
+
+    if !input_order.contains(&InputSortingType::Single) {
+        if !input_order.contains(&InputSortingType::Bip69) {
+            reasoning.push("BIP-69 not followed by inputs".to_string());
+            possible_wallets.remove(&WalletType::Electrum);
+            possible_wallets.remove(&WalletType::Trezor);
+        } else {
+            reasoning.push("BIP-69 followed by inputs".to_string());
+        }
+        if !input_order.contains(&InputSortingType::Historical) {
+            reasoning.push("Inputs not ordered historically".to_string());
+            possible_wallets.remove(&WalletType::Ledger);
+        } else {
+            reasoning.push("Inputs ordered historically".to_string());
+        }
+    }
+
+    // Change index
+    let change_index = get_change_index(tx, &prev_txouts);
+    if let ChangeIndex::Found(idx) = change_index {
+        if idx != tx.output.len() - 1 {
+            reasoning.push("Last index is not change".to_string());
+            possible_wallets.remove(&WalletType::Ledger);
+            possible_wallets.remove(&WalletType::BlueWallet);
+            possible_wallets.remove(&WalletType::Coinbase);
+        } else {
+            reasoning.push("Last index is change".to_string());
+        }
+    }
+
+    if possible_wallets.is_empty() {
+        return (HashSet::from([WalletType::Other]), reasoning);
+    }
+
+    (possible_wallets, reasoning)
 }
