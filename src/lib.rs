@@ -315,11 +315,6 @@ pub fn get_output_structure(tx: &Transaction) -> Vec<OutputStructureType> {
 
     // Check BIP69 ordering
     let amounts: Vec<_> = tx.output.iter().map(|out| out.value).collect();
-    let scripts: Vec<_> = tx
-        .output
-        .iter()
-        .map(|out| out.script_pubkey.clone())
-        .collect();
 
     // Check if amounts are unique
     let unique_amounts: HashSet<_> = amounts.iter().collect();

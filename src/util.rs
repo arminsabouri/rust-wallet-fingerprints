@@ -1,5 +1,4 @@
 use bitcoin::blockdata::script::Instruction;
-use bitcoin::secp256k1::ecdsa::Signature;
 use bitcoin::{Script, Transaction};
 
 /// Extracts ECDSA signatures from a scriptSig
