@@ -179,25 +179,35 @@ pub enum InputType {
     Address(AddressType),
 }
 
-/// Get input types
+fn get_type(prevout: &TxOut) -> InputType {
+    let address =
+        Address::from_script(&prevout.script_pubkey, Network::Bitcoin).expect("Always valid types");
+    if let Some(address_type) = address.address_type() {
+        return InputType::Address(address_type);
+    } else {
+        if prevout.script_pubkey.is_op_return() {
+            return InputType::Opreturn;
+        } else {
+            return InputType::Nulldata;
+        }
+    }
+}
+
 pub fn get_input_types(tx: &Transaction, prev_outs: &[TxOut]) -> Vec<InputType> {
     let mut input_types = Vec::new();
     for input in tx.input.iter() {
         let prevout = prev_outs[input.previous_output.vout as usize].clone();
-        if let Ok(address) = Address::from_script(&prevout.script_pubkey, Network::Bitcoin) {
-            if let Some(address_type) = address.address_type() {
-                input_types.push(InputType::Address(address_type));
-            }
-        } else {
-            if prevout.script_pubkey.is_op_return() {
-                input_types.push(InputType::Opreturn);
-            } else {
-                input_types.push(InputType::Nulldata);
-            }
-        }
+        input_types.push(get_type(&prevout));
     }
-
     input_types
+}
+
+pub fn get_output_types(tx: &Transaction) -> Vec<InputType> {
+    let mut output_types = Vec::new();
+    for output in tx.output.iter() {
+        output_types.push(get_type(output));
+    }
+    output_types
 }
 
 /// Returns true if the transaction has mixed input types
@@ -499,11 +509,11 @@ pub fn detect_wallet(
         possible_wallets.remove(&WalletType::Trust);
     }
 
-    // Spending types
-    let spending_types = get_spending_types(tx, prev_outs);
-    if spending_types
+    // get output types
+    let output_types = get_output_types(tx);
+    if output_types
         .iter()
-        .any(|t| t == "witness_v1_taproot" || t == "v1_p2tr")
+        .any(|t| t == &InputType::Address(AddressType::P2tr))
     {
         reasoning.push("Spends taproot output".to_string());
         possible_wallets.remove(&WalletType::Coinbase);
@@ -513,18 +523,18 @@ pub fn detect_wallet(
         possible_wallets.remove(&WalletType::Ledger);
         possible_wallets.remove(&WalletType::Trust);
     }
-    if spending_types
+    if output_types
         .iter()
-        .any(|t| t == "witness_v0_scripthash" || t == "v0_p2wsh")
+        .any(|t| t == &InputType::Address(AddressType::P2wsh))
     {
         possible_wallets.remove(&WalletType::Coinbase);
         possible_wallets.remove(&WalletType::Exodus);
         possible_wallets.remove(&WalletType::Trust);
         possible_wallets.remove(&WalletType::Trezor);
     }
-    if spending_types
+    if output_types
         .iter()
-        .any(|t| t == "pubkeyhash" || t == "p2pkh")
+        .any(|t| t == &InputType::Address(AddressType::P2pkh))
     {
         reasoning.push("Spends P2PKH output".to_string());
         possible_wallets.remove(&WalletType::Exodus);
