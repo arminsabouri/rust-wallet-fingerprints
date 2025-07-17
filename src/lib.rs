@@ -128,15 +128,14 @@ pub fn get_input_order(tx: &Transaction, prev_outs: &[TxOutWithOutpoint]) -> Vec
         let prevout = prev_outs
             .iter()
             .find(|prevout| prevout.outpoint == input.previous_output)
-            // TODO handle unwrap
-            .unwrap();
+            .expect("Previous transaction should always exist");
         amounts.push(InputWithAmount {
             amount: prevout.txout.value,
             outpoint: input.previous_output,
         });
     }
 
-    // Check if amounts are sorted (if we had amounts)
+    // Check if amounts are sorted
     if !amounts.is_empty() {
         let mut sorted_amounts = amounts.clone();
         sorted_amounts.sort_by_key(|a| a.amount);
@@ -151,14 +150,21 @@ pub fn get_input_order(tx: &Transaction, prev_outs: &[TxOutWithOutpoint]) -> Vec
     }
 
     // Check BIP69 sorting
-    let mut sorted_prevouts = prev_outs.to_vec();
-    sorted_prevouts.sort_by_key(|a| a.outpoint);
-    if prev_outs == sorted_prevouts {
+    let orignial_prevout = tx.input.clone();
+    let mut sorted_prevouts = tx.input.clone();
+    sorted_prevouts.sort_by(|a, b| {
+        let txid1 = hex::decode(a.previous_output.txid.to_string()).unwrap();
+        let txid2 = hex::decode(b.previous_output.txid.to_string()).unwrap();
+        txid1
+            .cmp(&txid2)
+            .then_with(|| a.previous_output.vout.cmp(&b.previous_output.vout))
+    });
+    if orignial_prevout == sorted_prevouts {
         sorting_types.push(InputSortingType::Bip69);
     }
 
     // Note: Historical sorting would require access to confirmation height data
-    // which isn't available in the Transaction struct alone
+    // which isn't available yet in this API
     if sorting_types.is_empty() {
         sorting_types.push(InputSortingType::Unknown);
     }
@@ -170,12 +176,10 @@ pub fn get_input_order(tx: &Transaction, prev_outs: &[TxOutWithOutpoint]) -> Vec
 /// https://bitcoinops.org/en/topics/low-r-grinding
 pub fn low_order_r_grinding(tx: &Transaction) -> bool {
     let sigs = extract_all_signatures(tx);
-    println!("{:?}", sigs);
     for sig_bytes in sigs.iter() {
         // TODO need to deal with compact schnorr sigs
         let sig = EcdsaSignature::from_slice(sig_bytes).unwrap();
         let compact = sig.to_vec();
-        println!("compact: {:?}", compact);
         if compact[0] < 0x80 {
             return true;
         }
@@ -414,7 +418,6 @@ pub fn get_output_structure(
         }
     }
 
-    // Check BIP69 ordering
     let amounts: Vec<_> = tx.output.iter().map(|out| out.value).collect();
 
     // Check if amounts are unique
@@ -679,6 +682,7 @@ pub fn detect_wallet(
 
     // Input/output structure
     let input_order = get_input_order(tx, &prev_txouts);
+    println!("input_order: {:?}", input_order);
     let output_structure = get_output_structure(tx, &prev_txouts);
 
     // if output_structure.contains(&OutputStructureType::Multi) {
@@ -697,21 +701,21 @@ pub fn detect_wallet(
     //     reasoning.push("BIP-69 followed by outputs".to_string());
     // }
 
-    // if !input_order.contains(&InputSortingType::Single) {
-    //     if !input_order.contains(&InputSortingType::Bip69) {
-    //         reasoning.push("BIP-69 not followed by inputs".to_string());
-    //         possible_wallets.remove(&WalletType::Electrum);
-    //         possible_wallets.remove(&WalletType::Trezor);
-    //     } else {
-    //         reasoning.push("BIP-69 followed by inputs".to_string());
-    //     }
-    //     if !input_order.contains(&InputSortingType::Historical) {
-    //         reasoning.push("Inputs not ordered historically".to_string());
-    //         possible_wallets.remove(&WalletType::Ledger);
-    //     } else {
-    //         reasoning.push("Inputs ordered historically".to_string());
-    //     }
-    // }
+    if !input_order.contains(&InputSortingType::Single) {
+        if !input_order.contains(&InputSortingType::Bip69) {
+            reasoning.push("BIP-69 not followed by inputs".to_string());
+            possible_wallets.remove(&WalletType::Electrum);
+            possible_wallets.remove(&WalletType::Trezor);
+        } else {
+            reasoning.push("BIP-69 followed by inputs".to_string());
+        }
+        if !input_order.contains(&InputSortingType::Historical) {
+            reasoning.push("Inputs not ordered historically".to_string());
+            possible_wallets.remove(&WalletType::Ledger);
+        } else {
+            reasoning.push("Inputs ordered historically".to_string());
+        }
+    }
 
     // Change index
     let change_index = get_change_index(tx, &prev_txouts);
