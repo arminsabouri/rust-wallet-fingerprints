@@ -3,10 +3,12 @@
 
 mod util;
 
-use bitcoin::secp256k1::ecdsa::Signature;
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::transaction::Version;
-use bitcoin::{Address, AddressType, Amount, Network, OutPoint, Sequence, Transaction, TxOut};
+use bitcoin::{
+    ecdsa::Signature as EcdsaSignature, Address, AddressType, Amount, Network, OutPoint, Sequence,
+    Transaction, TxOut,
+};
 use std::collections::HashSet;
 use util::extract_all_signatures;
 
@@ -71,14 +73,17 @@ pub struct Heuristics {
     pub input_types: HashSet<AddressType>,
 }
 
-pub fn using_uncompressed_pubkeys(spending_tx: &Transaction, prev_txs: &[Transaction]) -> bool {
+pub fn using_uncompressed_pubkeys(
+    spending_tx: &Transaction,
+    prev_outs: &[TxOutWithOutpoint],
+) -> bool {
     for input in spending_tx.input.iter() {
-        let prev_tx = &prev_txs
+        let prev_out = &prev_outs
             .iter()
-            .find(|tx| tx.compute_txid() == input.previous_output.txid)
-            .unwrap();
-        let prev_out = prev_tx.output[input.previous_output.vout as usize].clone();
-        let spk = prev_out.script_pubkey;
+            .find(|txout| txout.outpoint == input.previous_output)
+            .expect("Previous transaction should always exist")
+            .txout;
+        let spk = prev_out.script_pubkey.clone();
         if spk.is_p2sh() || spk.is_p2wsh() || spk.is_p2tr() {
             return false;
         }
@@ -110,7 +115,7 @@ struct InputWithAmount {
 }
 
 /// Returns the input sorting types detected in the transaction
-pub fn get_input_order(tx: &Transaction, prev_outs: &[TxOut]) -> Vec<InputSortingType> {
+pub fn get_input_order(tx: &Transaction, prev_outs: &[TxOutWithOutpoint]) -> Vec<InputSortingType> {
     if tx.input.len() == 1 {
         return vec![InputSortingType::Single];
     }
@@ -120,9 +125,13 @@ pub fn get_input_order(tx: &Transaction, prev_outs: &[TxOut]) -> Vec<InputSortin
 
     // Collect amounts and prevouts
     for input in &tx.input {
-        let prevout = prev_outs[input.previous_output.vout as usize].clone();
+        let prevout = prev_outs
+            .iter()
+            .find(|prevout| prevout.outpoint == input.previous_output)
+            // TODO handle unwrap
+            .unwrap();
         amounts.push(InputWithAmount {
-            amount: prevout.value,
+            amount: prevout.txout.value,
             outpoint: input.previous_output,
         });
     }
@@ -143,7 +152,7 @@ pub fn get_input_order(tx: &Transaction, prev_outs: &[TxOut]) -> Vec<InputSortin
 
     // Check BIP69 sorting
     let mut sorted_prevouts = prev_outs.to_vec();
-    sorted_prevouts.sort();
+    sorted_prevouts.sort_by_key(|a| a.outpoint);
     if prev_outs == sorted_prevouts {
         sorting_types.push(InputSortingType::Bip69);
     }
@@ -161,9 +170,12 @@ pub fn get_input_order(tx: &Transaction, prev_outs: &[TxOut]) -> Vec<InputSortin
 /// https://bitcoinops.org/en/topics/low-r-grinding
 pub fn low_order_r_grinding(tx: &Transaction) -> bool {
     let sigs = extract_all_signatures(tx);
+    println!("{:?}", sigs);
     for sig_bytes in sigs.iter() {
-        let sig = Signature::from_der(sig_bytes).unwrap();
-        let compact = sig.serialize_compact();
+        // TODO need to deal with compact schnorr sigs
+        let sig = EcdsaSignature::from_slice(sig_bytes).unwrap();
+        let compact = sig.to_vec();
+        println!("compact: {:?}", compact);
         if compact[0] < 0x80 {
             return true;
         }
@@ -193,12 +205,16 @@ fn get_type(prevout: &TxOut) -> InputType {
     }
 }
 
-pub fn get_input_types(tx: &Transaction, prev_outs: &[TxOut]) -> Vec<InputType> {
+pub fn get_input_types(tx: &Transaction, prev_outs: &[TxOutWithOutpoint]) -> Vec<InputType> {
     let mut input_types = Vec::new();
     for input in tx.input.iter() {
-        let prevout = prev_outs[input.previous_output.vout as usize].clone();
-        input_types.push(get_type(&prevout));
+        let prev_out = &prev_outs
+            .iter()
+            .find(|txout| txout.outpoint == input.previous_output)
+            .expect("Previous transaction should always exist");
+        input_types.push(prev_out.get_type());
     }
+
     input_types
 }
 
@@ -211,7 +227,7 @@ pub fn get_output_types(tx: &Transaction) -> Vec<InputType> {
 }
 
 /// Returns true if the transaction has mixed input types
-pub fn mixed_input_types(tx: &Transaction, prev_outs: &[TxOut]) -> bool {
+pub fn mixed_input_types(tx: &Transaction, prev_outs: &[TxOutWithOutpoint]) -> bool {
     let input_types = get_input_types(tx, prev_outs)
         .into_iter()
         .collect::<HashSet<InputType>>();
@@ -233,6 +249,19 @@ pub fn is_anti_fee_sniping(tx: &Transaction) -> bool {
     true
 }
 
+/// TxOut with OutPoint of the tx input spending the output
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TxOutWithOutpoint {
+    txout: TxOut,
+    outpoint: OutPoint,
+}
+
+impl TxOutWithOutpoint {
+    fn get_type(&self) -> InputType {
+        get_type(&self.txout)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChangeIndex {
     NoChange,     // Single output tx (-1)
@@ -250,32 +279,16 @@ impl ChangeIndex {
     }
 }
 /// Attempts to identify the change output in a transaction using various heuristics
-pub fn get_change_index(tx: &Transaction, prev_outs: &[TxOut]) -> ChangeIndex {
+pub fn get_change_index(tx: &Transaction, prev_outs: &[TxOutWithOutpoint]) -> ChangeIndex {
     // Single output case
     if tx.output.len() == 1 {
         return ChangeIndex::NoChange;
     }
 
     // Get input address types
-    let mut input_types = Vec::new();
-    for input in tx.input.iter() {
-        let prevout = &prev_outs[input.previous_output.vout as usize];
-        if let Ok(addr) = Address::from_script(&prevout.script_pubkey, Network::Bitcoin) {
-            if let Some(addr_type) = addr.address_type() {
-                input_types.push(addr_type);
-            }
-        }
-    }
-
+    let input_types = get_input_types(tx, prev_outs);
     // Get output address types
-    let mut output_types = Vec::new();
-    for output in tx.output.iter() {
-        if let Ok(addr) = Address::from_script(&output.script_pubkey, Network::Bitcoin) {
-            if let Some(addr_type) = addr.address_type() {
-                output_types.push(addr_type);
-            }
-        }
-    }
+    let output_types = get_output_types(tx);
 
     // Check if all inputs are same type and exactly one output matches
     if input_types.iter().all(|t| *t == input_types[0]) {
@@ -294,7 +307,7 @@ pub fn get_change_index(tx: &Transaction, prev_outs: &[TxOut]) -> ChangeIndex {
     // Check for address reuse
     let input_scripts: HashSet<_> = prev_outs
         .iter()
-        .map(|txout| txout.script_pubkey.clone())
+        .map(|txout| txout.txout.script_pubkey.clone())
         .collect();
 
     let shared_scripts: Vec<_> = tx
@@ -340,7 +353,7 @@ pub enum ChangeTypeMatchedInputs {
 
 pub fn change_type_matched_inputs(
     tx: &Transaction,
-    prev_outs: &[TxOut],
+    prev_outs: &[TxOutWithOutpoint],
 ) -> ChangeTypeMatchedInputs {
     let change_index = get_change_index(tx, prev_outs);
 
@@ -376,7 +389,10 @@ pub fn change_type_matched_inputs(
 }
 
 /// Returns the output structure types detected in the transaction
-pub fn get_output_structure(tx: &Transaction) -> Vec<OutputStructureType> {
+pub fn get_output_structure(
+    tx: &Transaction,
+    prev_outs: &[TxOutWithOutpoint],
+) -> Vec<OutputStructureType> {
     let mut output_structure = Vec::new();
 
     // Single output case
@@ -392,7 +408,7 @@ pub fn get_output_structure(tx: &Transaction) -> Vec<OutputStructureType> {
     }
 
     // Check if change output is last
-    if let ChangeIndex::Found(idx) = get_change_index(tx, &[]) {
+    if let ChangeIndex::Found(idx) = get_change_index(tx, prev_outs) {
         if idx == tx.output.len() - 1 {
             output_structure.push(OutputStructureType::ChangeLast);
         }
@@ -438,11 +454,11 @@ pub fn signals_rbf(tx: &Transaction) -> bool {
 }
 
 /// Returns true if any output address matches any input address, indicating address reuse
-pub fn address_reuse(tx: &Transaction, prev_outs: &[TxOut]) -> bool {
+pub fn address_reuse(tx: &Transaction, prev_outs: &[TxOutWithOutpoint]) -> bool {
     // Get script pubkeys from inputs
     let input_scripts: HashSet<_> = prev_outs
         .iter()
-        .map(|txout| txout.script_pubkey.clone())
+        .map(|txout| txout.txout.script_pubkey.clone())
         .collect();
 
     // Get script pubkeys from outputs
@@ -455,11 +471,36 @@ pub fn address_reuse(tx: &Transaction, prev_outs: &[TxOut]) -> bool {
     !input_scripts.is_disjoint(&output_scripts)
 }
 
-/// Main wallet detection function (full implementation)
+/// Attempt to detect the wallet type of a transaction
+/// Given the transaction and the previous transactions which are the inputs to the current transaction
 pub fn detect_wallet(
     tx: &Transaction,
     prev_txs: &[Transaction],
 ) -> (HashSet<WalletType>, Vec<String>) {
+    // TODO do some validation on the previous transactions
+    let prev_txouts = tx
+        .input
+        .iter()
+        .map(|txin| TxOutWithOutpoint {
+            txout: prev_txs
+                .iter()
+                .find(|prev_tx| prev_tx.compute_txid() == txin.previous_output.txid)
+                .unwrap()
+                .output[txin.previous_output.vout as usize]
+                .clone(),
+            outpoint: txin.previous_output,
+        })
+        .collect::<Vec<_>>();
+
+    // Sanity checks
+    assert!(prev_txouts.len() == tx.input.len());
+    // assert outpoints match
+    for (prev_txout, txin) in prev_txouts.iter().zip(tx.input.iter()) {
+        assert_eq!(prev_txout.outpoint, txin.previous_output);
+    }
+
+    println!("prev_txouts: {:?}", prev_txouts);
+
     let mut possible_wallets = HashSet::from([
         WalletType::BitcoinCore,
         WalletType::Electrum,
@@ -483,14 +524,10 @@ pub fn detect_wallet(
     }
 
     // Uncompressed public keys
-    let prev_txouts = prev_txs
-        .iter()
-        .map(|tx| tx.output.clone())
-        .flatten()
-        .collect::<Vec<_>>();
-    if !using_uncompressed_pubkeys(tx, &prev_txs) {
+    if !using_uncompressed_pubkeys(tx, &prev_txouts) {
         reasoning.push("Uncompressed public key(s)".to_string());
         possible_wallets.clear();
+        // Can we short-circuit here?
     } else {
         reasoning.push("All compressed public keys".to_string());
     }
@@ -541,9 +578,8 @@ pub fn detect_wallet(
         possible_wallets.remove(&WalletType::Trust);
     }
 
-    // Sending types
-    let sending_types = get_input_types(tx, &prev_txouts);
-    if sending_types
+    let input_types = get_input_types(tx, &prev_txouts);
+    if input_types
         .iter()
         // Should differenciate between P2tr key and script spend
         .any(|t| *t == InputType::Address(AddressType::P2tr))
@@ -551,7 +587,7 @@ pub fn detect_wallet(
         reasoning.push("Sends to taproot address".to_string());
         possible_wallets.remove(&WalletType::Coinbase);
     }
-    if sending_types
+    if input_types
         .iter()
         .any(|t| *t == InputType::Opreturn || *t == InputType::Nulldata)
     {
@@ -643,39 +679,39 @@ pub fn detect_wallet(
 
     // Input/output structure
     let input_order = get_input_order(tx, &prev_txouts);
-    let output_structure = get_output_structure(tx);
+    let output_structure = get_output_structure(tx, &prev_txouts);
 
-    if output_structure.contains(&OutputStructureType::Multi) {
-        reasoning.push("More than 2 outputs".to_string());
-        possible_wallets.remove(&WalletType::Coinbase);
-        possible_wallets.remove(&WalletType::Exodus);
-        possible_wallets.remove(&WalletType::Ledger);
-        possible_wallets.remove(&WalletType::Trust);
-    }
+    // if output_structure.contains(&OutputStructureType::Multi) {
+    //     reasoning.push("More than 2 outputs".to_string());
+    //     possible_wallets.remove(&WalletType::Coinbase);
+    //     possible_wallets.remove(&WalletType::Exodus);
+    //     possible_wallets.remove(&WalletType::Ledger);
+    //     possible_wallets.remove(&WalletType::Trust);
+    // }
 
-    if !output_structure.contains(&OutputStructureType::Bip69) {
-        reasoning.push("BIP-69 not followed by outputs".to_string());
-        possible_wallets.remove(&WalletType::Electrum);
-        possible_wallets.remove(&WalletType::Trezor);
-    } else {
-        reasoning.push("BIP-69 followed by outputs".to_string());
-    }
+    // if !output_structure.contains(&OutputStructureType::Bip69) {
+    //     reasoning.push("BIP-69 not followed by outputs".to_string());
+    //     possible_wallets.remove(&WalletType::Electrum);
+    //     possible_wallets.remove(&WalletType::Trezor);
+    // } else {
+    //     reasoning.push("BIP-69 followed by outputs".to_string());
+    // }
 
-    if !input_order.contains(&InputSortingType::Single) {
-        if !input_order.contains(&InputSortingType::Bip69) {
-            reasoning.push("BIP-69 not followed by inputs".to_string());
-            possible_wallets.remove(&WalletType::Electrum);
-            possible_wallets.remove(&WalletType::Trezor);
-        } else {
-            reasoning.push("BIP-69 followed by inputs".to_string());
-        }
-        if !input_order.contains(&InputSortingType::Historical) {
-            reasoning.push("Inputs not ordered historically".to_string());
-            possible_wallets.remove(&WalletType::Ledger);
-        } else {
-            reasoning.push("Inputs ordered historically".to_string());
-        }
-    }
+    // if !input_order.contains(&InputSortingType::Single) {
+    //     if !input_order.contains(&InputSortingType::Bip69) {
+    //         reasoning.push("BIP-69 not followed by inputs".to_string());
+    //         possible_wallets.remove(&WalletType::Electrum);
+    //         possible_wallets.remove(&WalletType::Trezor);
+    //     } else {
+    //         reasoning.push("BIP-69 followed by inputs".to_string());
+    //     }
+    //     if !input_order.contains(&InputSortingType::Historical) {
+    //         reasoning.push("Inputs not ordered historically".to_string());
+    //         possible_wallets.remove(&WalletType::Ledger);
+    //     } else {
+    //         reasoning.push("Inputs ordered historically".to_string());
+    //     }
+    // }
 
     // Change index
     let change_index = get_change_index(tx, &prev_txouts);
@@ -695,4 +731,40 @@ pub fn detect_wallet(
     }
 
     (possible_wallets, reasoning)
+}
+
+#[cfg(test)]
+mod tests {
+    use bitcoin::consensus::Decodable;
+    use hex;
+
+    use super::*;
+
+    fn get_tx_from_hex(hex: &str) -> Transaction {
+        let reader = hex::decode(hex).unwrap();
+        Transaction::consensus_decode(&mut reader.as_slice()).unwrap()
+    }
+
+    // Test vectors
+    #[test]
+    fn test_detect_wallet() {
+        // Electrum Transaction
+        let tx = get_tx_from_hex("02000000000102ac5718a0e7b3ee13ce2f273aa9c6a04becf8a1696edb75d3217c0d3790a620860000000000fdffffff74e1d8045cfe6b823943db609ceb3aa13216a936a9e18b92e26db770a8e4eae60000000000fdffffff02f6250000000000001600145333aa7bcef7bd632edaf5a326d4c6085417282d133f0000000000001976a914c8f57d6b8bc08fa211c71b8d255e7c4b25bd432288ac02473044022037059673792d5af9ab1cf5fc8ccf3c1c1ad300e9e6c25edda7a172e455d49e07022046d2c2638c129a8c9a54ca5adb5df01bde564066c36edade43c3845b3d25940101210202ca6c82b9cc52f7a8c34de6a6ccd807d8437a8368ddf7638a2b50002e745b360247304402207b3d3c39ee66bdaa509094072ae629794bd7ef0f14694f0e3695d89ed573c57202205cc9b6d059500ccf621621a657115e33c51064efad2dcf352ad32c69b0ae6ab301210202ca6c82b9cc52f7a8c34de6a6ccd807d8437a8368ddf7638a2b50002e745b3670360c00");
+
+        println!(
+            "{:?}",
+            tx.input
+                .iter()
+                .map(|i| i.previous_output)
+                .collect::<Vec<_>>()
+        );
+        let prev_txs = [
+            get_tx_from_hex("01000000000101b6d971c9ca363c5f901780d578bd0449d74b80bb565f367d56278c3b1601f94301000000000000000001f41400000000000016001460ac2a83f14bdc2016edf615138aabdd52d6c331024730440220560c4bdf1acc416517bd9d50ef65f0a99ac1633a5b1a7a3cb69ee486ed688a3a022079db25e85e6b34690456ad49f952302a80e1c146a7bc7af5387e92c2d4277c7a01210281bfdda07273f79522c04bff9e43c03655ebf96e482c8f3e262ccb5551c969f200000000"),
+            get_tx_from_hex("02000000000101b6d971c9ca363c5f901780d578bd0449d74b80bb565f367d56278c3b1601f9430000000000fdffffff019e5700000000000016001460ac2a83f14bdc2016edf615138aabdd52d6c331014079a93a95b32520c99a08cfae6f1dfca31242359ca42ba56873cf2be60f472ea330ab7273753602fa362ce106287b365bae5542cb7358157641d8e2a7a052245400000000")
+        ];
+
+        let (wallets, reasoning) = detect_wallet(&tx, &prev_txs);
+        println!("{:?}", wallets);
+        println!("{:?}", reasoning);
+    }
 }

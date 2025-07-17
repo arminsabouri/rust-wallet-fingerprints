@@ -5,3 +5,6 @@ edition = "2021"
 
 [dependencies]
 bitcoin = { version = "0.32.5", features = ["rand"] }
+
+[dev-dependencies]
+hex = "0.4.3"
