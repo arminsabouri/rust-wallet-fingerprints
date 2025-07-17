@@ -240,6 +240,15 @@ pub enum ChangeIndex {
     Found(usize), // Index of change output
 }
 
+impl ChangeIndex {
+    pub fn index(&self) -> Option<usize> {
+        match self {
+            ChangeIndex::NoChange => None,
+            ChangeIndex::Inconclusive => None,
+            ChangeIndex::Found(index) => Some(*index),
+        }
+    }
+}
 /// Attempts to identify the change output in a transaction using various heuristics
 pub fn get_change_index(tx: &Transaction, prev_outs: &[TxOut]) -> ChangeIndex {
     // Single output case
@@ -319,6 +328,51 @@ pub fn get_change_index(tx: &Transaction, prev_outs: &[TxOut]) -> ChangeIndex {
     }
 
     ChangeIndex::Inconclusive
+}
+
+pub enum ChangeTypeMatchedInputs {
+    NoChangeOrInconclusive,
+    ChangeMatchesInputsTypes,
+    ChangeMatchesOutputsTypes,
+    MatchesInputsAndOutputs,
+    NoMatchesInputsOrOutputs,
+}
+
+pub fn change_type_matched_inputs(
+    tx: &Transaction,
+    prev_outs: &[TxOut],
+) -> ChangeTypeMatchedInputs {
+    let change_index = get_change_index(tx, prev_outs);
+
+    if matches!(
+        change_index,
+        ChangeIndex::NoChange | ChangeIndex::Inconclusive
+    ) {
+        return ChangeTypeMatchedInputs::NoChangeOrInconclusive;
+    }
+
+    let change_type = get_type(&tx.output[change_index.index().expect("Checked above")]);
+    let input_types = get_input_types(tx, prev_outs);
+    // Remove the change output from the txouts
+    let mut tx = tx.clone();
+    tx.output
+        .remove(change_index.index().expect("Checked above"));
+    let output_types = get_output_types(&tx);
+
+    let matches_input_types = input_types.iter().all(|t| *t == change_type);
+    let matches_output_types = output_types.iter().all(|t| *t == change_type);
+
+    if matches_input_types && matches_output_types {
+        return ChangeTypeMatchedInputs::MatchesInputsAndOutputs;
+    }
+    if matches_input_types {
+        return ChangeTypeMatchedInputs::ChangeMatchesInputsTypes;
+    }
+    if matches_output_types {
+        return ChangeTypeMatchedInputs::ChangeMatchesOutputsTypes;
+    }
+
+    ChangeTypeMatchedInputs::NoMatchesInputsOrOutputs
 }
 
 /// Returns the output structure types detected in the transaction
@@ -554,14 +608,20 @@ pub fn detect_wallet(
 
     // Change type matched inputs/outputs
     let change_matched_inputs = change_type_matched_inputs(tx, &prev_txouts);
-    if change_matched_inputs == -1 {
+    if matches!(
+        change_matched_inputs,
+        ChangeTypeMatchedInputs::ChangeMatchesOutputsTypes
+    ) {
         reasoning.push("Change type matched outputs".to_string());
         if possible_wallets.contains(&WalletType::BitcoinCore) {
             possible_wallets = HashSet::from([WalletType::BitcoinCore]);
         } else {
             possible_wallets.clear();
         }
-    } else if change_matched_inputs == 1 {
+    } else if matches!(
+        change_matched_inputs,
+        ChangeTypeMatchedInputs::ChangeMatchesInputsTypes
+    ) {
         reasoning.push("Change type matched inputs".to_string());
         possible_wallets.remove(&WalletType::BitcoinCore);
     }
