@@ -453,7 +453,7 @@ pub fn get_output_structure(
 /// Returns true if the transaction signals RBF (Replace-By-Fee)
 /// by having at least one input with sequence number less than 0xffffffff
 pub fn signals_rbf(tx: &Transaction) -> bool {
-    tx.input.iter().any(|input| input.sequence < Sequence::MAX)
+    tx.input.iter().any(|input| input.sequence.is_rbf())
 }
 
 /// Returns true if any output address matches any input address, indicating address reuse
