@@ -6,7 +6,7 @@ mod util;
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::transaction::Version;
 use bitcoin::{
-    ecdsa::Signature as EcdsaSignature, Address, AddressType, Amount, Network, OutPoint, Sequence,
+    ecdsa::Signature as EcdsaSignature, Address, AddressType, Amount, Network, OutPoint,
     Transaction, TxOut,
 };
 use std::collections::HashSet;
@@ -502,8 +502,6 @@ pub fn detect_wallet(
         assert_eq!(prev_txout.outpoint, txin.previous_output);
     }
 
-    println!("prev_txouts: {:?}", prev_txouts);
-
     let mut possible_wallets = HashSet::from([
         WalletType::BitcoinCore,
         WalletType::Electrum,
@@ -530,7 +528,7 @@ pub fn detect_wallet(
     if !using_uncompressed_pubkeys(tx, &prev_txouts) {
         reasoning.push("Uncompressed public key(s)".to_string());
         possible_wallets.clear();
-        // Can we short-circuit here?
+        return (possible_wallets, reasoning);
     } else {
         reasoning.push("All compressed public keys".to_string());
     }
@@ -584,7 +582,7 @@ pub fn detect_wallet(
     let input_types = get_input_types(tx, &prev_txouts);
     if input_types
         .iter()
-        // Should differenciate between P2tr key and script spend
+        // TODO: Should differenciate between P2tr key and script spend
         .any(|t| *t == InputType::Address(AddressType::P2tr))
     {
         reasoning.push("Sends to taproot address".to_string());
@@ -603,6 +601,7 @@ pub fn detect_wallet(
     }
 
     // get output types
+    // TODO: these output types are super outdate now
     let output_types = get_output_types(tx);
     if output_types
         .iter()
