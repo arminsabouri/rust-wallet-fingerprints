@@ -32,7 +32,7 @@ pub enum OutputStructureType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum WalletType {
+enum WalletType {
     BitcoinCore,
     Electrum,
     BlueWallet,
@@ -41,11 +41,13 @@ pub enum WalletType {
     Trust,
     Trezor,
     Ledger,
+    #[allow(unused)]
     Unclear,
     Other,
 }
 
 impl WalletType {
+    #[allow(unused)]
     pub fn as_str(&self) -> &'static str {
         match self {
             WalletType::BitcoinCore => "Bitcoin Core",
@@ -476,7 +478,9 @@ pub fn address_reuse(tx: &Transaction, prev_outs: &[TxOutWithOutpoint]) -> bool 
 
 /// Attempt to detect the wallet type of a transaction
 /// Given the transaction and the previous transactions which are the inputs to the current transaction
-pub fn detect_wallet(
+/// TODO: this method is was ported from the python impl and is most likely not up to date
+#[allow(unused)]
+fn detect_wallet(
     tx: &Transaction,
     prev_txs: &[Transaction],
 ) -> (HashSet<WalletType>, Vec<String>) {
