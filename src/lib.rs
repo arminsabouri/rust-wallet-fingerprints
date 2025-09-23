@@ -193,7 +193,7 @@ pub fn low_order_r_grinding(tx: &Transaction) -> bool {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InputType {
     Opreturn,
-    Nulldata,
+    NonStandard,
     Address(AddressType),
 }
 
@@ -206,7 +206,7 @@ fn get_type(prevout: &TxOut) -> InputType {
         if prevout.script_pubkey.is_op_return() {
             return InputType::Opreturn;
         } else {
-            return InputType::Nulldata;
+            return InputType::NonStandard;
         }
     }
 }
@@ -594,7 +594,7 @@ fn detect_wallet(
     }
     if input_types
         .iter()
-        .any(|t| *t == InputType::Opreturn || *t == InputType::Nulldata)
+        .any(|t| *t == InputType::Opreturn || *t == InputType::NonStandard)
     {
         reasoning.push("Creates OP_RETURN output".to_string());
         possible_wallets.remove(&WalletType::Coinbase);
