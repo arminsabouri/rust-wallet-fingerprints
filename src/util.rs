@@ -1,5 +1,8 @@
 use bitcoin::blockdata::script::Instruction;
-use bitcoin::{ecdsa::Signature as EcdsaSignature, Script, Transaction};
+use bitcoin::{
+    ecdsa::Signature as EcdsaSignature, secp256k1::schnorr::Signature as SchnorrSignature, Script,
+    Transaction,
+};
 use bitcoin::{Address, AddressType, Network, OutPoint, TxOut};
 
 /// Extracts ECDSA signatures from a scriptSig
@@ -21,7 +24,9 @@ fn extract_signatures_from_scriptsig(script_sig: &Script) -> Vec<Vec<u8>> {
 fn extract_signatures_from_witness(witness: &bitcoin::Witness) -> Vec<Vec<u8>> {
     witness
         .iter()
-        .filter(|data| EcdsaSignature::from_slice(data).is_ok())
+        .filter(|data| {
+            EcdsaSignature::from_slice(data).is_ok() || SchnorrSignature::from_slice(data).is_ok()
+        }) // DER prefix
         .map(|data| data.to_vec())
         .collect()
 }
