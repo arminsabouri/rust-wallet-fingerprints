@@ -1,21 +1,24 @@
 //! This module contains functions for detecting a wallet given a Bitcoin transaction.
 //! This is a port of Python code from here: https://github.com/ishaanam/wallet-fingerprinting/blob/master/fingerprinting.py
 
-mod util;
+mod global;
+pub mod heuristics;
 mod input;
 mod output;
-mod global;
+mod util;
 
 use bitcoin::transaction::Version;
-use bitcoin::{
-    AddressType,
-    Transaction,
-};
+use bitcoin::{AddressType, Transaction};
 use std::collections::HashSet;
 
 use crate::global::{address_reuse, signals_rbf, using_uncompressed_pubkeys};
-use crate::input::{get_input_order, get_input_types, low_order_r_grinding, mixed_input_types, InputSortingType};
-use crate::output::{change_type_matched_inputs, get_change_index, get_output_structure, get_output_types, ChangeIndex, ChangeTypeMatchedInputs, OutputStructureType};
+use crate::input::{
+    get_input_order, get_input_types, low_order_r_grinding, mixed_input_types, InputSortingType,
+};
+use crate::output::{
+    change_type_matched_inputs, get_change_index, get_output_structure, get_output_types,
+    ChangeIndex, ChangeTypeMatchedInputs, OutputStructureType,
+};
 use crate::util::OutputType;
 use crate::{global::is_anti_fee_sniping, util::TxOutWithOutpoint};
 
@@ -67,10 +70,7 @@ pub struct Heuristics {
 /// Given the transaction and the previous transactions which are the inputs to the current transaction
 /// TODO: this method is was ported from the python impl and is most likely not up to date
 #[allow(unused)]
-fn detect_wallet(
-    tx: &Transaction,
-    prev_txs: &[Transaction],
-) -> (HashSet<WalletType>, Vec<String>) {
+fn detect_wallet(tx: &Transaction, prev_txs: &[Transaction]) -> (HashSet<WalletType>, Vec<String>) {
     // TODO do some validation on the previous transactions
     let prev_txouts = tx
         .input

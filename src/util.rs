@@ -43,7 +43,7 @@ pub(crate) fn extract_all_signatures(tx: &Transaction) -> Vec<Vec<u8>> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum OutputType {
+pub enum OutputType {
     Opreturn,
     NonStandard,
     Address(AddressType),

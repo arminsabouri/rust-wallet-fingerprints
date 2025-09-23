@@ -2,7 +2,10 @@ use std::collections::HashSet;
 
 use bitcoin::{ecdsa::Signature as EcdsaSignature, Amount, OutPoint, Transaction};
 
-use crate::{util::{extract_all_signatures, OutputType}, TxOutWithOutpoint};
+use crate::{
+    util::{extract_all_signatures, OutputType},
+    TxOutWithOutpoint,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct InputWithAmount {
@@ -11,7 +14,10 @@ struct InputWithAmount {
 }
 
 /// Returns the input sorting types detected in the transaction
-pub(crate) fn get_input_order(tx: &Transaction, prev_outs: &[TxOutWithOutpoint]) -> Vec<InputSortingType> {
+pub(crate) fn get_input_order(
+    tx: &Transaction,
+    prev_outs: &[TxOutWithOutpoint],
+) -> Vec<InputSortingType> {
     if tx.input.len() == 1 {
         return vec![InputSortingType::Single];
     }
@@ -84,9 +90,8 @@ pub(crate) fn low_order_r_grinding(tx: &Transaction) -> bool {
     false
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum InputSortingType {
+pub enum InputSortingType {
     Single,
     Ascending,
     Descending,
@@ -96,7 +101,10 @@ pub(crate) enum InputSortingType {
     Unknown,
 }
 
-pub(crate) fn get_input_types(tx: &Transaction, prev_outs: &[TxOutWithOutpoint]) -> Vec<OutputType> {
+pub(crate) fn get_input_types(
+    tx: &Transaction,
+    prev_outs: &[TxOutWithOutpoint],
+) -> Vec<OutputType> {
     let mut input_types = Vec::new();
     for input in tx.input.iter() {
         let prev_out = &prev_outs

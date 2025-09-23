@@ -2,10 +2,13 @@ use std::collections::HashSet;
 
 use bitcoin::Transaction;
 
-use crate::{input::get_input_types, util::{get_output_type, OutputType, TxOutWithOutpoint}};
+use crate::{
+    input::get_input_types,
+    util::{get_output_type, OutputType, TxOutWithOutpoint},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChangeIndex {
+pub enum ChangeIndex {
     NoChange,     // Single output tx (-1)
     Inconclusive, // Could not determine (-2)
     Found(usize), // Index of change output
@@ -86,7 +89,8 @@ pub(crate) fn get_change_index(tx: &Transaction, prev_outs: &[TxOutWithOutpoint]
     ChangeIndex::Inconclusive
 }
 
-pub(crate) enum ChangeTypeMatchedInputs {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeTypeMatchedInputs {
     NoChangeOrInconclusive,
     ChangeMatchesInputsTypes,
     ChangeMatchesOutputsTypes,
@@ -132,7 +136,7 @@ pub(crate) fn change_type_matched_inputs(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum OutputStructureType {
+pub enum OutputStructureType {
     Single,
     Double,
     Multi,
@@ -197,7 +201,6 @@ pub(crate) fn get_output_structure(
 
     output_structure
 }
-
 
 pub(crate) fn get_output_types(tx: &Transaction) -> Vec<OutputType> {
     let mut output_types = Vec::new();
