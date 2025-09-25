@@ -1,0 +1,16 @@
+[package]
+name = "rust-wallet-fingerprint"
+description = "A library for detecting wallet fingerprints in Bitcoin transactions"
+license = "MIT"
+repository = "https://github.com/arminsabouri/rust-wallet-fingerprint"
+documentation = "https://docs.rs/wallet-fingerprint"
+readme = "README.md"
+categories = ["cryptography"]
+keywords = ["data-structures", "security", "cryptography"]
+authors = ["Armin Sabouri <me@arminsabouri.com>"]
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+bitcoin = { workspace = true }
+hex = { workspace = true }
