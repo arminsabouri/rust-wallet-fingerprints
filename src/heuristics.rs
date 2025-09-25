@@ -14,20 +14,38 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Heuristics {
+    /* Global heuristics */
+    /// The version of the transaction
     pub tx_version: Version,
+    /// Whether the transaction protects against fee sniping attacks
+    /// https://bitcoinops.org/en/topics/fee-sniping/
     pub anti_fee_snipe: bool,
     // TODO: should this be a f32 probability?
+    /// Whether the transaction has any signatures with low order R values
+    /// https://bitcoinops.org/en/topics/low-r-grinding/
     pub low_r_grinding: bool,
-    pub mixed_input_types: bool,
-    pub maybe_same_change_type: ChangeTypeMatchedInputs,
-    pub input_types: Vec<OutputType>,
-    pub output_types: Vec<OutputType>,
-    pub uncompressed_pubkeys: bool,
-    pub signals_rbf: bool,
+    /// Whether the transaction has outputs that are the same as any inputs
     pub address_reuse: bool,
-    pub output_structure: Vec<OutputStructureType>,
-    pub change_index: ChangeIndex,
+    /// Whether the transaction has inputs that are the same "type" as the change output
+    pub maybe_same_change_type: ChangeTypeMatchedInputs,
+    /* Input heuristics */
+    /// Whether the transaction has inputs that are of different types
+    pub mixed_input_types: bool,
+    /// The types of the inputs
+    pub input_types: Vec<OutputType>,
+    /// Whether the transaction has inputs that
+    pub uncompressed_pubkeys: bool,
+    /// Whether the transaction has inputs that are signals of RBF via BIP 125
+    pub signals_rbf: bool,
+    /// The order of the inputs
     pub input_order: Vec<InputSortingType>,
+    /* Output heuristics */
+    /// The types of the outputs
+    pub output_types: Vec<OutputType>,
+    /// The structure of the outputs
+    pub output_structure: Vec<OutputStructureType>,
+    /// The index of the change output
+    pub change_index: ChangeIndex,
 }
 
 impl Heuristics {
