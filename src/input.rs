@@ -92,12 +92,17 @@ pub(crate) fn low_order_r_grinding(tx: &Transaction) -> bool {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputSortingType {
+    /// Single input
     Single,
+    /// Inputs are sorted in ascending order
     Ascending,
+    /// Inputs are sorted in descending order
     Descending,
+    /// Inputs are sorted according to BIP 69
     Bip69,
     // TODO: current unused. If we have confirmation height on input, we can use this
     Historical,
+    /// Input sorting type is unknown
     Unknown,
 }
 

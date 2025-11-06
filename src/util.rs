@@ -49,8 +49,11 @@ pub(crate) fn extract_all_signatures(tx: &Transaction) -> Vec<Vec<u8>> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OutputType {
+    /// Output is an op_return
     Opreturn,
+    /// Output is not a standard output
     NonStandard,
+    /// Standard address type output
     Address(AddressType),
 }
 

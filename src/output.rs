@@ -9,9 +9,12 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChangeIndex {
-    NoChange,     // Single output tx (-1)
-    Inconclusive, // Could not determine (-2)
-    Found(usize), // Index of change output
+    /// Single output tx
+    NoChange,
+    /// Could not determine
+    Inconclusive,
+    /// Index of change output
+    Found(usize),
 }
 
 impl ChangeIndex {
@@ -91,10 +94,15 @@ pub(crate) fn get_change_index(tx: &Transaction, prev_outs: &[TxOutWithOutpoint]
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChangeTypeMatchedInputs {
+    /// No change output or could not determine
     NoChangeOrInconclusive,
+    /// Change output matches input types
     ChangeMatchesInputsTypes,
+    /// Change output matches output types
     ChangeMatchesOutputsTypes,
+    /// Change output matches both input and output types
     MatchesInputsAndOutputs,
+    /// Change output does not match any input or output types
     NoMatchesInputsOrOutputs,
 }
 
@@ -137,10 +145,15 @@ pub(crate) fn change_type_matched_inputs(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputStructureType {
+    /// Single output
     Single,
+    /// Two outputs
     Double,
+    /// More than two outputs
     Multi,
+    /// Change output is the last output
     ChangeLast,
+    /// Outputs are sorted according to BIP 69
     Bip69,
 }
 

@@ -26,18 +26,18 @@ pub struct Heuristics {
     pub low_r_grinding: bool,
     /// Whether the transaction has outputs that are the same as any inputs
     pub address_reuse: bool,
-    /// Whether the transaction has inputs that are the same "type" as the change output
+    /// Whether the transaction has inputs or outputs that are the same "type" as the change output
     pub maybe_same_change_type: ChangeTypeMatchedInputs,
     /* Input heuristics */
-    /// Whether the transaction has inputs that are of different types
+    /// Whether the transaction has inputs that are of different "types"
     pub mixed_input_types: bool,
     /// The types of the inputs
     pub input_types: Vec<OutputType>,
-    /// Whether the transaction has inputs that
+    /// Whether the transaction has inputs that are using uncompressed public keys
     pub uncompressed_pubkeys: bool,
-    /// Whether the transaction has inputs that are signals of RBF via BIP 125
+    /// Whether the transaction has inputs that are signals of RBF via BIP 125 (Replace-by-Fee)
     pub signals_rbf: bool,
-    /// The order of the inputs
+    /// The ordering of the inputs
     pub input_order: Vec<InputSortingType>,
     /* Output heuristics */
     /// The types of the outputs
