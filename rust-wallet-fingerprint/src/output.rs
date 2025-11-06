@@ -89,7 +89,7 @@ pub(crate) fn get_change_index(tx: &Transaction, prev_outs: &[TxOutWithOutpoint]
     ChangeIndex::Inconclusive
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum ChangeTypeMatchedInputs {
     NoChangeOrInconclusive,
     ChangeMatchesInputsTypes,

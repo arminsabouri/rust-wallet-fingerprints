@@ -1,0 +1,57 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.eggs/
+dist/
+build/
+develop-eggs/
+parts/
+eggs/
+lib/
+lib64/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.whl
+*.manifest
+
+# Environments
+.venv/
+venv/
+env/
+ENV/
+virtualenv/
+myenv/
+instance/
+_build/
+.python-version
+
+# PyInstaller
+#  Usually these files are built in a _MEIPASS folder, but if you use the --onefile flag,
+#  they will be concatenated in a single file.
+# _MEIPASS/
+# _MEIPASS*
+# !/path/to/include/file
+# !/path/to/include/folder/
+# dist/
+# build/
+# *.spec
+
+# sdist
+*.tar.gz
+
+# Others
+*.log
+*.bak
+*~
+*.swp
+*.DS_Store
+*.sqlite
+*.lock

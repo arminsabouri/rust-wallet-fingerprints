@@ -11,6 +11,9 @@ use bitcoin::transaction::Version;
 use bitcoin::{AddressType, Transaction};
 use std::collections::HashSet;
 
+uniffi::setup_scaffolding!();
+
+
 use crate::global::{address_reuse, signals_rbf, using_uncompressed_pubkeys};
 use crate::input::{
     get_input_order, get_input_types, low_order_r_grinding, mixed_input_types, InputSortingType,
