@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=62", "wheel", "toml"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wallet-fingerprints"
+description = "The Python language bindings for rust-wallet-fingerprints"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+dynamic = ["version"]
+dependencies = [
+    "build==1.3.0",
+    "semantic-version==2.9.0",
+    "setuptools==78.1.1",
+    "typing-extensions==4.0.1",
+    "wheel==0.38.4",
+]
+
+[tool.setuptools]
+packages = ["wallet-fingerprint"]
+package-dir = { "wallet-fingerprint" = "src/wallet-fingerprint" }
+include-package-data = true
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "."
+]
+
+[dependency-groups]
+dev = [
+    "toml==0.10.2",
+    "yapf==0.43.0",
+]
