@@ -58,17 +58,6 @@ impl WalletType {
     }
 }
 
-#[derive(Debug)]
-pub struct Heuristics {
-    pub tx_version: i32,
-    pub anti_fee_snipe: bool,
-    pub low_r_grinding: f32,
-    pub prob_bip69: Option<f64>,
-    pub mixed_input_types: bool,
-    pub maybe_same_change_type: Option<bool>,
-    pub input_types: HashSet<AddressType>,
-}
-
 /// Attempt to detect the wallet type of a transaction
 /// Given the transaction and the previous transactions which are the inputs to the current transaction
 /// TODO: this method is was ported from the python impl and is most likely not up to date
