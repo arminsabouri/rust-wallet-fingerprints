@@ -40,24 +40,6 @@ enum WalletType {
     Other,
 }
 
-impl WalletType {
-    #[allow(unused)]
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            WalletType::BitcoinCore => "Bitcoin Core",
-            WalletType::Electrum => "Electrum",
-            WalletType::BlueWallet => "Blue Wallet",
-            WalletType::Coinbase => "Coinbase Wallet",
-            WalletType::Exodus => "Exodus Wallet",
-            WalletType::Trust => "Trust Wallet",
-            WalletType::Trezor => "Trezor",
-            WalletType::Ledger => "Ledger",
-            WalletType::Unclear => "Unclear",
-            WalletType::Other => "Other",
-        }
-    }
-}
-
 /// Attempt to detect the wallet type of a transaction
 /// Given the transaction and the previous transactions which are the inputs to the current transaction
 /// TODO: this method is was ported from the python impl and is most likely not up to date
