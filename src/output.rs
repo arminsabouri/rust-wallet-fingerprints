@@ -92,7 +92,8 @@ pub(crate) fn get_change_index(tx: &Transaction, prev_outs: &[TxOutWithOutpoint]
     ChangeIndex::Inconclusive
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Enum))]
 pub enum ChangeTypeMatchedInputs {
     /// No change output or could not determine
     NoChangeOrInconclusive,

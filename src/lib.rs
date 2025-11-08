@@ -11,6 +11,7 @@ use bitcoin::transaction::Version;
 use bitcoin::{AddressType, Transaction};
 use std::collections::HashSet;
 
+#[cfg(feature = "ffi")]
 uniffi::setup_scaffolding!();
 
 
