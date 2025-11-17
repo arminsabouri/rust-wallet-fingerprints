@@ -14,9 +14,10 @@ use std::collections::HashSet;
 #[cfg(feature = "ffi")]
 uniffi::setup_scaffolding!();
 
-use crate::global::{address_reuse, signals_rbf, using_uncompressed_pubkeys};
+use crate::global::{address_reuse, signals_rbf};
 use crate::input::{
-    get_input_order, get_input_types, low_order_r_grinding, mixed_input_types, InputSortingType,
+    get_input_order, get_input_types, low_order_r_grinding, mixed_input_types,
+    spending_spk_has_uncompressed_pubkey, InputSortingType,
 };
 use crate::output::{
     change_type_matched_inputs, get_change_index, get_output_structure, get_output_types,
@@ -90,7 +91,7 @@ fn detect_wallet(tx: &Transaction, prev_txs: &[Transaction]) -> (HashSet<WalletT
     }
 
     // Uncompressed public keys
-    if !using_uncompressed_pubkeys(tx, &prev_txouts) {
+    if spending_spk_has_uncompressed_pubkey(tx, &prev_txouts) {
         reasoning.push("Uncompressed public key(s)".to_string());
         possible_wallets.clear();
         return (possible_wallets, reasoning);

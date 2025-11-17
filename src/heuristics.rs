@@ -1,9 +1,10 @@
 use bitcoin::transaction::Version;
 
 use crate::{
-    global::{address_reuse, is_anti_fee_sniping, signals_rbf, using_uncompressed_pubkeys},
+    global::{address_reuse, is_anti_fee_sniping, signals_rbf},
     input::{
-        get_input_order, get_input_types, low_order_r_grinding, mixed_input_types, InputSortingType,
+        get_input_order, get_input_types, low_order_r_grinding, mixed_input_types,
+        spending_spk_has_uncompressed_pubkey, InputSortingType,
     },
     output::{
         change_type_matched_inputs, get_change_index, get_output_structure, get_output_types,
@@ -35,7 +36,7 @@ pub struct Heuristics {
     /// The types of the inputs
     pub input_types: Vec<OutputType>,
     /// Whether the transaction has inputs that are using uncompressed public keys
-    pub uncompressed_pubkeys: bool,
+    pub spending_spk_has_uncompressed_pubkey: bool,
     /// Whether the transaction has inputs that are signals of RBF via BIP 125 (Replace-by-Fee)
     pub signals_rbf: bool,
     /// The ordering of the inputs
@@ -83,7 +84,10 @@ impl Heuristics {
             maybe_same_change_type: change_type_matched_inputs(&tx.0, &prev_txouts),
             input_types: get_input_types(&tx.0, &prev_txouts),
             output_types: get_output_types(&tx.0),
-            uncompressed_pubkeys: using_uncompressed_pubkeys(&tx.0, &prev_txouts),
+            spending_spk_has_uncompressed_pubkey: spending_spk_has_uncompressed_pubkey(
+                &tx.0,
+                &prev_txouts,
+            ),
             signals_rbf: signals_rbf(&tx.0),
             address_reuse: address_reuse(&tx.0, &prev_txouts),
             output_structure: get_output_structure(&tx.0, &prev_txouts),
@@ -120,7 +124,10 @@ impl Heuristics {
             maybe_same_change_type: change_type_matched_inputs(&tx, &prev_txouts),
             input_types: get_input_types(&tx, &prev_txouts),
             output_types: get_output_types(&tx),
-            uncompressed_pubkeys: using_uncompressed_pubkeys(&tx, &prev_txouts),
+            spending_spk_has_uncompressed_pubkey: spending_spk_has_uncompressed_pubkey(
+                &tx,
+                &prev_txouts,
+            ),
             signals_rbf: signals_rbf(&tx),
             address_reuse: address_reuse(&tx, &prev_txouts),
             output_structure: get_output_structure(&tx, &prev_txouts),

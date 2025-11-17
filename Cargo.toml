@@ -23,6 +23,7 @@ uniffi = { version = "0.29.1", features = ["build"] }
 
 [dev-dependencies]
 uniffi = { version = "0.29.1", features = ["bindgen-tests"] }
+rand = "0.8.5"
 
 [lib]
 name = "wallet_fingerprint"
