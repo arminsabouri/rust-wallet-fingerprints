@@ -1,4 +1,4 @@
-use bitcoin::{transaction::Version, Transaction};
+use bitcoin::transaction::Version;
 
 use crate::{
     global::{address_reuse, is_anti_fee_sniping, signals_rbf, using_uncompressed_pubkeys},
@@ -13,6 +13,7 @@ use crate::{
 };
 
 #[derive(Debug)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Object))]
 pub struct Heuristics {
     /* Global heuristics */
     /// The version of the transaction
@@ -48,8 +49,54 @@ pub struct Heuristics {
     pub change_index: ChangeIndex,
 }
 
+#[cfg(feature = "uniffi")]
+#[uniffi::export]
 impl Heuristics {
-    pub fn new(tx: &Transaction, prev_txs: &[Transaction]) -> Self {
+    #[cfg(feature = "uniffi")]
+    #[uniffi::constructor]
+    pub fn new(
+        tx: std::sync::Arc<bitcoin_ffi::Transaction>,
+        prev_txs: Vec<std::sync::Arc<bitcoin_ffi::Transaction>>,
+    ) -> Self {
+        // TODO do some validation on the previous transactions
+        let prev_txouts = tx
+            .0
+            .input
+            .iter()
+            .map(|txin| TxOutWithOutpoint {
+                txout: prev_txs
+                    .iter()
+                    .find(|prev_tx| prev_tx.compute_txid() == txin.previous_output.txid.to_string())
+                    .unwrap()
+                    .0
+                    .output[txin.previous_output.vout as usize]
+                    .clone(),
+                outpoint: txin.previous_output,
+            })
+            .collect::<Vec<_>>();
+
+        Self {
+            tx_version: tx.0.version,
+            anti_fee_snipe: is_anti_fee_sniping(&tx.0),
+            low_r_grinding: low_order_r_grinding(&tx.0),
+            mixed_input_types: mixed_input_types(&tx.0, &prev_txouts),
+            maybe_same_change_type: change_type_matched_inputs(&tx.0, &prev_txouts),
+            input_types: get_input_types(&tx.0, &prev_txouts),
+            output_types: get_output_types(&tx.0),
+            uncompressed_pubkeys: using_uncompressed_pubkeys(&tx.0, &prev_txouts),
+            signals_rbf: signals_rbf(&tx.0),
+            address_reuse: address_reuse(&tx.0, &prev_txouts),
+            output_structure: get_output_structure(&tx.0, &prev_txouts),
+            change_index: get_change_index(&tx.0, &prev_txouts),
+            input_order: get_input_order(&tx.0, &prev_txouts),
+        }
+    }
+}
+
+#[cfg(not(feature = "uniffi"))]
+impl Heuristics {
+    #[cfg(not(feature = "uniffi"))]
+    pub fn new(tx: bitcoin::Transaction, prev_txs: Vec<bitcoin::Transaction>) -> Self {
         // TODO do some validation on the previous transactions
         let prev_txouts = tx
             .input
@@ -65,33 +112,20 @@ impl Heuristics {
             })
             .collect::<Vec<_>>();
 
-        let input_types = get_input_types(tx, &prev_txouts);
-        let output_types = get_output_types(tx);
-        let change_index = get_change_index(tx, &prev_txouts);
-        let output_structure = get_output_structure(tx, &prev_txouts);
-        let address_reuse = address_reuse(tx, &prev_txouts);
-        let anti_fee_snipe = is_anti_fee_sniping(tx);
-        let low_r_grinding = low_order_r_grinding(tx);
-        let mixed_input_types = mixed_input_types(tx, &prev_txouts);
-        let same_change_type = change_type_matched_inputs(tx, &prev_txouts);
-        let uncompressed_pubkeys = using_uncompressed_pubkeys(tx, &prev_txouts);
-        let signals_rbf = signals_rbf(tx);
-        let input_order = get_input_order(tx, &prev_txouts);
-
         Self {
             tx_version: tx.version,
-            anti_fee_snipe,
-            low_r_grinding,
-            mixed_input_types,
-            maybe_same_change_type: same_change_type,
-            input_types,
-            output_types,
-            uncompressed_pubkeys,
-            signals_rbf,
-            address_reuse,
-            output_structure,
-            change_index,
-            input_order,
+            anti_fee_snipe: is_anti_fee_sniping(&tx),
+            low_r_grinding: low_order_r_grinding(&tx),
+            mixed_input_types: mixed_input_types(&tx, &prev_txouts),
+            maybe_same_change_type: change_type_matched_inputs(&tx, &prev_txouts),
+            input_types: get_input_types(&tx, &prev_txouts),
+            output_types: get_output_types(&tx),
+            uncompressed_pubkeys: using_uncompressed_pubkeys(&tx, &prev_txouts),
+            signals_rbf: signals_rbf(&tx),
+            address_reuse: address_reuse(&tx, &prev_txouts),
+            output_structure: get_output_structure(&tx, &prev_txouts),
+            change_index: get_change_index(&tx, &prev_txouts),
+            input_order: get_input_order(&tx, &prev_txouts),
         }
     }
 }

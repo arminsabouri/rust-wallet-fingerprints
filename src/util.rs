@@ -1,9 +1,8 @@
-use bitcoin::blockdata::script::Instruction;
 use bitcoin::{
-    ecdsa::Signature as EcdsaSignature, secp256k1::schnorr::Signature as SchnorrSignature, Script,
-    Transaction,
+    blockdata::script::Instruction, ecdsa::Signature as EcdsaSignature,
+    secp256k1::schnorr::Signature as SchnorrSignature, Address, AddressType, Network, OutPoint,
+    Script, Transaction, TxOut,
 };
-use bitcoin::{Address, AddressType, Network, OutPoint, TxOut};
 
 /// Extracts ECDSA signatures from a scriptSig
 fn extract_signatures_from_scriptsig(script_sig: &Script) -> Vec<Vec<u8>> {
@@ -48,6 +47,7 @@ pub(crate) fn extract_all_signatures(tx: &Transaction) -> Vec<Vec<u8>> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+// TODO: export this to uniffi
 pub enum OutputType {
     /// Output is an op_return
     Opreturn,

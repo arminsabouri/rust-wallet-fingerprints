@@ -145,6 +145,8 @@ pub(crate) fn change_type_matched_inputs(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Enum))]
+
 pub enum OutputStructureType {
     /// Single output
     Single,

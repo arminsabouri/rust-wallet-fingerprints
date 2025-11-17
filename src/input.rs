@@ -91,6 +91,7 @@ pub(crate) fn low_order_r_grinding(tx: &Transaction) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Enum))]
 pub enum InputSortingType {
     /// Single input
     Single,
